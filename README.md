@@ -17,7 +17,7 @@ A Discord bot that monitors Roblox client versions across multiple platforms and
 ## Environment Variables
 
 This bot reads configuration from **environment variables** which will **override any `.env` file settings** if present.
-> Aka if set via the shell, or registry environment it'll usage that instead of .env
+> For clarification if set via the shell, or registry environment it'll use that instead of .env file.
 
 | Variable       | Description                                     | Required | Example                |
 | -------------- | ----------------------------------------------- | -------- | ---------------------- |
