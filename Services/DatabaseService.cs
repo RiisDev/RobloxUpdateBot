@@ -6,11 +6,15 @@ namespace RobloxUpdateBot.Services
     [SuppressMessage("ReSharper", "InvertIf")]
     public class DatabaseService
     {
-        private static readonly SqliteConnection SharedConnection = new SqliteConnection(ConnectionString);
-        private const string ConnectionString = "Data Source=botdata.db";
+        private const string DbFolder = "data";
+        private const string DbFileName = "botdata.db";
+        private static readonly string DbPath = Path.Combine(DbFolder, DbFileName);
+        private static readonly string ConnectionString = $"Data Source={DbPath}";
+        private static readonly SqliteConnection SharedConnection = new (ConnectionString);
 
         public DatabaseService()
         {
+            Directory.CreateDirectory(DbFolder);
             SharedConnection.Open();
             Initialize();
         }
@@ -97,7 +101,7 @@ namespace RobloxUpdateBot.Services
                             });
         }
 
-        public Channel? GetChannel(ulong channelId)
+        public Channel GetChannel(ulong channelId)
         {
             Channel channel = null!;
 
@@ -141,7 +145,7 @@ namespace RobloxUpdateBot.Services
                             });
         }
 
-        public Status? GetStatus(string clientName)
+        public Status GetStatus(string clientName)
         {
             Status status = null!;
             using SqliteCommand cmd = SharedConnection.CreateCommand();
