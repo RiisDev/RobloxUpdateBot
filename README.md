@@ -35,11 +35,18 @@ This bot reads configuration from **environment variables** which will **overrid
 
 2. **Build and run** the application.
 
+Via Dotnet
 ```bash
 dotnet restore
 dotnet build
 dotnet run
 ```
+
+Via Docker
+```
+docker pull ghcr.io/riisdev/robloxupdatebot
+```
+> Volume bind /app/data
 
 3. The bot will connect to Discord, initialize its database service, and begin monitoring Roblox client versions automatically.
 
