@@ -9,7 +9,7 @@ using RobloxUpdateBot.Services;
 
 _ = new EnvService(); // Load environment variables from .env file if it exists
 
-string[] env = ["BOT_TOKEN", "OWNER_ID", "RECHECK_MS", "EXPLOIT_NAME", "EXPLOIT_URL"];
+string[] env = ["BOT_TOKEN", "OWNER_ID", "RECHECK_MS", "EXPLOIT_NAME", "EXPLOIT_URL", "GUILD_ID"];
 
 foreach (string variable in env)
 {

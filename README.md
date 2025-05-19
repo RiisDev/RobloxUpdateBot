@@ -26,6 +26,7 @@ This bot reads configuration from **environment variables** which will **overrid
 | `RECHECK_MS`   | Interval in milliseconds for update checks      | Yes      | `1800000` (30 minutes) |
 | `EXPLOIT_NAME` | Name of the exploit for footer and logs         | Yes      | `MyExploit`            |
 | `EXPLOIT_URL`  | URL shown in bot's Discord presence (streaming) | Yes      | `https://example.com`  |
+| `GUILD_ID`	 | Discord GuildId to send the messagse to		   | Yes      | `123456789012345678`  |
 
 ---
 

@@ -11,6 +11,7 @@ namespace RobloxUpdateBot.Services
 {
     public class UpdateService
     {
+        private readonly ulong _guildId = ulong.Parse(Environment.GetEnvironmentVariable("GUILD_ID") ?? "0");
         private readonly GatewayClient _discordService;
         private readonly DatabaseService _databaseService;
 
@@ -94,6 +95,7 @@ namespace RobloxUpdateBot.Services
         {
             Status? currentStatus = _databaseService.GetStatus(statusKey);
             if (currentStatus == null) return;
+
             string lastUpdate = currentStatus.Version;
             HttpRequestMessage request = new(HttpMethod.Get, storeUrl);
             HttpResponseMessage response = await _client.SendAsync(request);
@@ -169,12 +171,12 @@ namespace RobloxUpdateBot.Services
 
         private async Task UpdateDetected(Status client, string oldVersion)
         {
-            IGuildChannel? channel = (await _discordService.Rest.GetGuildChannelsAsync(1372898533274816533)).FirstOrDefault(x=> x.Id == client.ChannelId);
+            IGuildChannel? channel = (await _discordService.Rest.GetGuildChannelsAsync(_guildId)).FirstOrDefault(x=> x.Id == client.ChannelId);
             if (channel is null) return;
 
-            await channel.ModifyAsync(x => x.Name = _databaseService.GetChannel(channel.Id)?.ChannelUpdatedFalseText ?? "N/A");
+            await channel.ModifyAsync(x => x.Name = _databaseService.GetChannel(channel.Id).ChannelUpdatedFalseText);
             
-            channel = (await _discordService.Rest.GetGuildChannelsAsync(1372898533274816533)).FirstOrDefault(x => x.Id == _databaseService.GetLog());
+            channel = (await _discordService.Rest.GetGuildChannelsAsync(_guildId)).FirstOrDefault(x => x.Id == _databaseService.GetLog());
             if (channel is null) return;
 
             await _discordService.Rest.SendMessageAsync(channel.Id, new MessageProperties

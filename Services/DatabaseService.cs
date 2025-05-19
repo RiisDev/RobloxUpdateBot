@@ -19,7 +19,6 @@ namespace RobloxUpdateBot.Services
             Initialize();
         }
 
-
         private void ExecuteNonQuery(string sql, Dictionary<string, object>? commands = null)
         {
             using SqliteCommand command = SharedConnection.CreateCommand();
@@ -145,9 +144,9 @@ namespace RobloxUpdateBot.Services
                             });
         }
 
-        public Status GetStatus(string clientName)
+        public Status? GetStatus(string clientName)
         {
-            Status status = null!;
+            Status? status = null;
             using SqliteCommand cmd = SharedConnection.CreateCommand();
             cmd.CommandText = "SELECT Client, Version, ChannelId, Updated FROM Status WHERE Client = @client";
             cmd.Parameters.AddWithValue("@client", clientName);
@@ -162,7 +161,7 @@ namespace RobloxUpdateBot.Services
 
                 status = new Status(client, version, channelId, updated);
             }
-
+            
             return status;
         }
         
