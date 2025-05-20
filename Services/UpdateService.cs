@@ -134,7 +134,9 @@ namespace RobloxUpdateBot.Services
             if (!versionMatch.Success) return;
 
             string currentUpdate = versionMatch.Groups[1].Value;
-            
+
+            if (lastVersion == currentUpdate) return;
+
             Status newStatus = currentStatus with
             {
                 Version = currentUpdate,
