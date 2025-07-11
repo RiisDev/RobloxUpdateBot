@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Json;
+﻿using System.Globalization;
+using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,9 +35,10 @@ namespace RobloxUpdateBot.Services
             _timer.AutoReset = true;
             _timer.Enabled = true;
             _timer.Start();
-
             _ = RunAllWatchersAsync();
         }
+
+        private DateTime ParseDateTime(string input) => DateTime.ParseExact(input, ["MMM d, yyyy", "MMM dd, yyyy"], CultureInfo.InvariantCulture, DateTimeStyles.None);
 
         private async Task WindowsVersionWatcher()
         {
@@ -97,24 +99,31 @@ namespace RobloxUpdateBot.Services
             Status? currentStatus = _databaseService.GetStatus(statusKey);
             if (currentStatus == null) return;
 
-            string lastVersion = currentStatus.Version;
+            int breakIndex = currentStatus.Version.IndexOf('|');
+            string lastVersion = breakIndex <= 0 ? currentStatus.Version : currentStatus.Version[..breakIndex];
+            DateTime lastDate = breakIndex <= 0 ? DateTime.MinValue : ParseDateTime(lastVersion[(breakIndex + 1)..]);
+
             HttpRequestMessage request = new(HttpMethod.Get, storeUrl);
             HttpResponseMessage response = await _client.SendAsync(request);
             if (!response.IsSuccessStatusCode) return;
 
             string content = await response.Content.ReadAsStringAsync();
-
+            
             Match versionMatch = Regex.Match(content, @"Version\s+(\d{1,4}\.\d{1,4}\.\d{1,5})");
+            Match dateMatch = Regex.Match(content, @"<time[^>]*>(.*?)<\/time>");
 
+            if (!dateMatch.Success) return;
             if (!versionMatch.Success) return;
 
             string currentUpdate = versionMatch.Groups[1].Value;
+            DateTime currentDate = ParseDateTime(dateMatch.Groups[1].Value);
 
             if (lastVersion == currentUpdate) return;
+            if (lastDate >= currentDate) return;
 
             Status newStatus = currentStatus with
             {
-                Version = currentUpdate,
+                Version = $"{currentUpdate}|{currentDate}",
                 Updated = false
             };
 
@@ -128,7 +137,9 @@ namespace RobloxUpdateBot.Services
             Status? currentStatus = _databaseService.GetStatus(statusKey);
             if (currentStatus == null) return;
 
-            string lastVersion = currentStatus.Version;
+            int breakIndex = currentStatus.Version.IndexOf('|');
+            string lastVersion = breakIndex <= 0 ? currentStatus.Version : currentStatus.Version[..breakIndex];
+            DateTime lastDate = breakIndex <= 0 ? DateTime.MinValue : ParseDateTime(lastVersion[(breakIndex+1)..]);
 
             HttpRequestMessage request = new(HttpMethod.Get, storeUrl);
             HttpResponseMessage response = await _client.SendAsync(request);
@@ -138,16 +149,20 @@ namespace RobloxUpdateBot.Services
             string content = await response.Content.ReadAsStringAsync();
 
             Match versionMatch = Regex.Match(content, @"\[\""(\d{1,4}\.\d{1,4}\.\d{1,5})\""\]");
+            Match dateMatch = Regex.Match(content, @"Updated\s*on<\/div>\s*<div[^>]*>([^<]+)<\/div>");
 
+            if (!dateMatch.Success) return;
             if (!versionMatch.Success) return;
 
             string currentUpdate = versionMatch.Groups[1].Value;
+            DateTime currentDate = ParseDateTime(dateMatch.Groups[1].Value);
 
             if (lastVersion == currentUpdate) return;
+            if (lastDate >= currentDate) return;
 
             Status newStatus = currentStatus with
             {
-                Version = currentUpdate,
+                Version = $"{currentUpdate}|{currentDate}",
                 Updated = false
             };
 
@@ -208,84 +223,6 @@ namespace RobloxUpdateBot.Services
             });
         }
 
-        #region OldIos
-        public record IosSubResult(
-            [property: JsonPropertyName("isGameCenterEnabled")] bool? IsGameCenterEnabled,
-            [property: JsonPropertyName("features")] IReadOnlyList<string> Features,
-            [property: JsonPropertyName("advisories")] IReadOnlyList<string> Advisories,
-            [property: JsonPropertyName("supportedDevices")] IReadOnlyList<string> SupportedDevices,
-            [property: JsonPropertyName("kind")] string Kind,
-            [property: JsonPropertyName("artistViewUrl")] string ArtistViewUrl,
-            [property: JsonPropertyName("artworkUrl60")] string ArtworkUrl60,
-            [property: JsonPropertyName("artworkUrl100")] string ArtworkUrl100,
-            [property: JsonPropertyName("screenshotUrls")] IReadOnlyList<string> ScreenshotUrls,
-            [property: JsonPropertyName("ipadScreenshotUrls")] IReadOnlyList<string> IpadScreenshotUrls,
-            [property: JsonPropertyName("appletvScreenshotUrls")] IReadOnlyList<object> AppletvScreenshotUrls,
-            [property: JsonPropertyName("artworkUrl512")] string ArtworkUrl512,
-            [property: JsonPropertyName("artistId")] int? ArtistId,
-            [property: JsonPropertyName("artistName")] string ArtistName,
-            [property: JsonPropertyName("genres")] IReadOnlyList<string> Genres,
-            [property: JsonPropertyName("price")] double? Price,
-            [property: JsonPropertyName("trackId")] long? TrackId,
-            [property: JsonPropertyName("trackName")] string TrackName,
-            [property: JsonPropertyName("bundleId")] string BundleId,
-            [property: JsonPropertyName("isVppDeviceBasedLicensingEnabled")] bool? IsVppDeviceBasedLicensingEnabled,
-            [property: JsonPropertyName("releaseDate")] DateTime? ReleaseDate,
-            [property: JsonPropertyName("primaryGenreName")] string PrimaryGenreName,
-            [property: JsonPropertyName("primaryGenreId")] int? PrimaryGenreId,
-            [property: JsonPropertyName("sellerName")] string SellerName,
-            [property: JsonPropertyName("genreIds")] IReadOnlyList<string> GenreIds,
-            [property: JsonPropertyName("currentVersionReleaseDate")] DateTime? CurrentVersionReleaseDate,
-            [property: JsonPropertyName("releaseNotes")] string ReleaseNotes,
-            [property: JsonPropertyName("version")] string Version,
-            [property: JsonPropertyName("wrapperType")] string WrapperType,
-            [property: JsonPropertyName("currency")] string Currency,
-            [property: JsonPropertyName("description")] string Description,
-            [property: JsonPropertyName("averageUserRating")] double? AverageUserRating,
-            [property: JsonPropertyName("trackCensoredName")] string TrackCensoredName,
-            [property: JsonPropertyName("trackViewUrl")] string TrackViewUrl,
-            [property: JsonPropertyName("contentAdvisoryRating")] string ContentAdvisoryRating,
-            [property: JsonPropertyName("minimumOsVersion")] string MinimumOsVersion,
-            [property: JsonPropertyName("averageUserRatingForCurrentVersion")] double? AverageUserRatingForCurrentVersion,
-            [property: JsonPropertyName("sellerUrl")] string SellerUrl,
-            [property: JsonPropertyName("languageCodesISO2A")] IReadOnlyList<string> LanguageCodesIso2A,
-            [property: JsonPropertyName("fileSizeBytes")] string FileSizeBytes,
-            [property: JsonPropertyName("formattedPrice")] string FormattedPrice,
-            [property: JsonPropertyName("userRatingCountForCurrentVersion")] int? UserRatingCountForCurrentVersion,
-            [property: JsonPropertyName("trackContentRating")] string TrackContentRating,
-            [property: JsonPropertyName("userRatingCount")] int? UserRatingCount
-        );
-
-        public record IosResult(
-            [property: JsonPropertyName("resultCount")] int? ResultCount,
-            [property: JsonPropertyName("results")] IReadOnlyList<IosSubResult> Results
-        );
-
-        private async Task IosVersionWatcher(string statusKey, string storeUrl)
-        {
-            Status? currentStatus = _databaseService.GetStatus(statusKey);
-            if (currentStatus == null) return;
-
-            string lastUpdate = currentStatus.Version;
-            HttpRequestMessage request = new(HttpMethod.Get, storeUrl);
-            HttpResponseMessage response = await _client.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return;
-
-            IosResult? iosResult = await response.Content.ReadFromJsonAsync<IosResult>();
-            if (iosResult is null || iosResult.Results.Count == 0) return;
-            if (iosResult.Results[0].Version == lastUpdate) return;
-
-            Status newStatus = currentStatus with
-            {
-                Version = iosResult.Results[0].Version,
-                Updated = false
-            };
-
-            _databaseService.UpdateStatus(newStatus);
-            await UpdateDetected(newStatus, lastUpdate);
-        }
-
-        #endregion
     }
 
     public record RobloxVersion(
