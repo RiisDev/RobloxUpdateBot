@@ -168,8 +168,8 @@ namespace RobloxUpdateBot.Services
             channel = (await _discordService.Rest.GetGuildChannelsAsync(_guildId)).FirstOrDefault(x => x.Id == _databaseService.GetLog());
             if (channel is null) return;
 
-            string versionActual = client.Version.Contains('|') ? client.Version[client.Version.IndexOf('|')..] : client.Version;
-            string oldVersionActual = oldVersion.Contains('|') ? oldVersion[oldVersion.IndexOf('|')..] : oldVersion;
+            string versionActual = client.Version.Contains('|') ? client.Version[..client.Version.IndexOf('|')] : client.Version;
+            string oldVersionActual = oldVersion.Contains('|') ? oldVersion[..oldVersion.IndexOf('|')] : oldVersion;
 
             await _discordService.Rest.SendMessageAsync(channel.Id, new MessageProperties
             {
