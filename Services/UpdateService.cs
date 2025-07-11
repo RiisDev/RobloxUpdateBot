@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -35,30 +36,31 @@ namespace RobloxUpdateBot.Services
             _timer.AutoReset = true;
             _timer.Enabled = true;
             _timer.Start();
+
             _ = RunAllWatchersAsync();
         }
 
-        private DateTime ParseDateTime(string input) => DateTime.ParseExact(input, [
-            "dd MMM, yyyy",
-            "d MMM, yyyy",
-            "MMM d, yyyy",
-            "MMM dd, yyyy",
-            "dd MMM yyyy",
-            "d MMM yyyy",
-            "MMM d yyyy",
-            "MMM dd yyyy"
+        private static DateTime ParseDateTime(string input) 
+            => DateTime.ParseExact(input, [
+                "dd MMM, yyyy",
+                "d MMM, yyyy",
+                "MMM d, yyyy",
+                "MMM dd, yyyy",
+                "dd MMM yyyy",
+                "d MMM yyyy",
+                "MMM d yyyy",
+                "MMM dd yyyy"
             ], CultureInfo.InvariantCulture, DateTimeStyles.None);
 
-        private async Task WindowsVersionWatcher()
+        private async Task DesktopVersionWatcher(string platform, string url)
         {
-            Status? currentStatus = _databaseService.GetStatus("Windows");
+            Status? currentStatus = _databaseService.GetStatus(platform);
             if (currentStatus == null) return;
 
             string lastVersion = currentStatus.Version;
 
-            HttpRequestMessage request = new(HttpMethod.Get, "https://clientsettings.roblox.com/v2/client-version/WindowsPlayer/channel/LIVE");
+            HttpRequestMessage request = new(HttpMethod.Get, url);
             HttpResponseMessage response = await _client.SendAsync(request);
-
             if (!response.IsSuccessStatusCode) return;
 
             RobloxVersion? robloxVersion = await response.Content.ReadFromJsonAsync<RobloxVersion>();
@@ -72,63 +74,33 @@ namespace RobloxUpdateBot.Services
             };
 
             _databaseService.UpdateStatus(newStatus);
-
             await UpdateDetected(newStatus, lastVersion);
         }
 
-        private async Task MacVersionWatcher()
-        {
-            Status? currentStatus = _databaseService.GetStatus("Mac");
-            if (currentStatus == null) return;
-
-            string lastVersion = currentStatus.Version;
-
-            HttpRequestMessage request = new(HttpMethod.Get, "https://clientsettings.roblox.com/v2/client-version/MacPlayer/channel/LIVE");
-            HttpResponseMessage response = await _client.SendAsync(request);
-
-            if (!response.IsSuccessStatusCode) return;
-
-            RobloxVersion? robloxVersion = await response.Content.ReadFromJsonAsync<RobloxVersion>();
-            if (robloxVersion is null) return;
-            if (robloxVersion.ClientVersionUpload == currentStatus.Version) return;
-
-            Status newStatus = currentStatus with
-            {
-                Version = robloxVersion.ClientVersionUpload,
-                Updated = false
-            };
-
-            _databaseService.UpdateStatus(newStatus);
-
-            await UpdateDetected(newStatus, lastVersion);
-        }
-
-        private async Task IosVersionWatcherNew(string statusKey, string storeUrl)
+        private async Task MobileVersionWatcher(string statusKey, string storeUrl, [StringSyntax(StringSyntaxAttribute.Regex)] string versionPattern, [StringSyntax(StringSyntaxAttribute.Regex)] string datePattern)
         {
             Status? currentStatus = _databaseService.GetStatus(statusKey);
             if (currentStatus == null) return;
 
             int breakIndex = currentStatus.Version.IndexOf('|');
             string lastVersion = breakIndex <= 0 ? currentStatus.Version : currentStatus.Version[..breakIndex];
-            DateTime lastDate = breakIndex <= 0 ? DateTime.MinValue : ParseDateTime(lastVersion[(breakIndex + 1)..]);
+            DateTime lastDate = breakIndex <= 0 ? DateTime.MinValue : ParseDateTime(currentStatus.Version[(breakIndex + 1)..]);
 
             HttpRequestMessage request = new(HttpMethod.Get, storeUrl);
             HttpResponseMessage response = await _client.SendAsync(request);
             if (!response.IsSuccessStatusCode) return;
 
             string content = await response.Content.ReadAsStringAsync();
-            
-            Match versionMatch = Regex.Match(content, @"Version\s+(\d{1,4}\.\d{1,4}\.\d{1,5})");
-            Match dateMatch = Regex.Match(content, @"<time[^>]*>(.*?)<\/time>");
 
-            if (!dateMatch.Success) return;
-            if (!versionMatch.Success) return;
+            Match versionMatch = Regex.Match(content, versionPattern);
+            Match dateMatch = Regex.Match(content, datePattern);
+
+            if (!versionMatch.Success || !dateMatch.Success) return;
 
             string currentUpdate = versionMatch.Groups[1].Value;
             DateTime currentDate = ParseDateTime(dateMatch.Groups[1].Value);
 
-            if (lastVersion == currentUpdate) return;
-            if (lastDate >= currentDate) return;
+            if (lastVersion == currentUpdate || lastDate >= currentDate) return;
 
             Status newStatus = currentStatus with
             {
@@ -139,46 +111,6 @@ namespace RobloxUpdateBot.Services
             _databaseService.UpdateStatus(newStatus);
             await UpdateDetected(newStatus, lastVersion);
         }
-
-
-        private async Task AndroidVersionWatcher(string statusKey, string storeUrl)
-        {
-            Status? currentStatus = _databaseService.GetStatus(statusKey);
-            if (currentStatus == null) return;
-
-            int breakIndex = currentStatus.Version.IndexOf('|');
-            string lastVersion = breakIndex <= 0 ? currentStatus.Version : currentStatus.Version[..breakIndex];
-            DateTime lastDate = breakIndex <= 0 ? DateTime.MinValue : ParseDateTime(lastVersion[(breakIndex+1)..]);
-
-            HttpRequestMessage request = new(HttpMethod.Get, storeUrl);
-            HttpResponseMessage response = await _client.SendAsync(request);
-
-            if (!response.IsSuccessStatusCode) return;
-
-            string content = await response.Content.ReadAsStringAsync();
-
-            Match versionMatch = Regex.Match(content, @"\[\""(\d{1,4}\.\d{1,4}\.\d{1,5})\""\]");
-            Match dateMatch = Regex.Match(content, @"Updated\s*on<\/div>\s*<div[^>]*>([^<]+)<\/div>");
-
-            if (!dateMatch.Success) return;
-            if (!versionMatch.Success) return;
-
-            string currentUpdate = versionMatch.Groups[1].Value;
-            DateTime currentDate = ParseDateTime(dateMatch.Groups[1].Value);
-
-            if (lastVersion == currentUpdate) return;
-            if (lastDate >= currentDate) return;
-
-            Status newStatus = currentStatus with
-            {
-                Version = $"{currentUpdate}|{currentDate}",
-                Updated = false
-            };
-
-            _databaseService.UpdateStatus(newStatus);
-            await UpdateDetected(newStatus, lastVersion);
-        }
-
 
         private async Task RunAllWatchersAsync()
         {
@@ -186,12 +118,34 @@ namespace RobloxUpdateBot.Services
             {
                 Task[] tasks =
                 [
-                    WindowsVersionWatcher(),
-                    MacVersionWatcher(),
-                    IosVersionWatcherNew("IOS", "https://apps.apple.com/us/app/roblox/id431946152?uo=4"),
-                    IosVersionWatcherNew("IOS-VNG", "https://apps.apple.com/vn/app/roblox-vn/id6474715805?uo=4"),
-                    AndroidVersionWatcher("Android", "https://play.google.com/store/apps/details?id=com.roblox.client&hl=en"),
-                    AndroidVersionWatcher("Android-VNG", "https://play.google.com/store/apps/details?id=com.roblox.client.vnggames&hl=en")
+                    DesktopVersionWatcher("Windows", "https://clientsettings.roblox.com/v2/client-version/WindowsPlayer/channel/LIVE"),
+                    DesktopVersionWatcher("Mac", "https://clientsettings.roblox.com/v2/client-version/MacPlayer/channel/LIVE"),
+
+                    MobileVersionWatcher(
+                        statusKey: "IOS", 
+                        storeUrl: "https://apps.apple.com/us/app/roblox/id431946152?uo=4", 
+                        versionPattern: @"Version\s+(\d{1,4}\.\d{1,4}\.\d{1,5})", 
+                        datePattern: @"<time[^>]*>(.*?)<\/time>"
+                    ),
+                    MobileVersionWatcher(
+                        statusKey: "IOS-VNG", 
+                        storeUrl: "https://apps.apple.com/vn/app/roblox-vn/id6474715805?uo=4", 
+                        versionPattern: @"Version\s+(\d{1,4}\.\d{1,4}\.\d{1,5})", 
+                        datePattern: @"<time[^>]*>(.*?)<\/time>"
+                    ),
+
+                    MobileVersionWatcher(
+                        statusKey: "Android", 
+                        storeUrl: "https://play.google.com/store/apps/details?id=com.roblox.client&hl=en", 
+                        versionPattern: @"\[\""(\d{1,4}\.\d{1,4}\.\d{1,5})\""\]", 
+                        datePattern: @"Updated\s*on<\/div>\s*<div[^>]*>([^<]+)<\/div>"
+                    ),
+                    MobileVersionWatcher(
+                        statusKey: "Android-VNG", 
+                        storeUrl: "https://play.google.com/store/apps/details?id=com.roblox.client.vnggames&hl=en", 
+                        versionPattern: @"\[\""(\d{1,4}\.\d{1,4}\.\d{1,5})\""\]", 
+                        datePattern: @"Updated\s*on<\/div>\s*<div[^>]*>([^<]+)<\/div>"
+                    )
                 ];
 
                 await Task.WhenAll(tasks);
@@ -201,7 +155,6 @@ namespace RobloxUpdateBot.Services
                 Console.WriteLine($"Error in RunAllWatchersAsync: {ex.Message}");
             }
         }
-
 
         private async Task UpdateDetected(Status client, string oldVersion)
         {
