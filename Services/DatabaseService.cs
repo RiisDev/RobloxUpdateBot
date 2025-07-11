@@ -57,12 +57,6 @@ namespace RobloxUpdateBot.Services
                                                           Updated INTEGER NOT NULL,
                                                           FOREIGN KEY(ChannelId) REFERENCES Channel(ChannelId)
                                                       );
-                                                      CREATE TABLE IF NOT EXISTS History (
-                                                          Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                                          Client TEXT NOT NULL,
-                                                          Version TEXT NOT NULL,
-                                                          Date TEXT NOT NULL
-                                                      );
                                                       CREATE TABLE IF NOT EXISTS VerifiedUsers (
                                                           DiscordId INTEGER PRIMARY KEY
                                                       );
@@ -71,6 +65,11 @@ namespace RobloxUpdateBot.Services
                                                       );
                                                       CREATE TABLE IF NOT EXISTS LogChannel (
                                                           ChannelId INTEGER PRIMARY KEY
+                                                      );
+                                                      INSERT INTO Channel (ChannelId, ChannelUpdatedTrueText, ChannelUpdatedFalseText)
+                                                      SELECT 0, '', ''
+                                                      WHERE NOT EXISTS (
+                                                          SELECT 1 FROM Channel WHERE ChannelId = 0
                                                       );
                                                       """);
 
@@ -126,7 +125,6 @@ namespace RobloxUpdateBot.Services
             return channel;
         }
 
-
         public void UpdateStatus(Status status)
         {
             ExecuteNonQuery("""
@@ -142,6 +140,16 @@ namespace RobloxUpdateBot.Services
                             {"@channelId", status.ChannelId},
                             {"@updated", status.Updated ? 1 : 0}
                             });
+        }
+
+        public void DeleteStatus(Commands.Client client)
+        {
+            ExecuteNonQuery("""
+                            DELETE FROM Status
+                            WHERE Client = @client;
+                            """, new Dictionary<string, object> {
+                {"@client", client}
+            });
         }
 
         public Status? GetStatus(string clientName)
@@ -165,16 +173,6 @@ namespace RobloxUpdateBot.Services
             return status;
         }
         
-        public void AddHistory(History history)
-        {
-            ExecuteNonQuery("INSERT INTO History (Client, Version, Date) VALUES (@client, @version, @date)", new Dictionary<string, object>
-            {
-                {"@client", history.Client},
-                {"@version", history.Version},
-                {"@date", DateTime.UtcNow.ToString("o")}
-            });
-        }
-
         public void AddVerifiedUser(VerifiedUsers user)
         {
             ExecuteNonQuery("INSERT INTO VerifiedUsers (DiscordId) VALUES (@discordId) ON CONFLICT(discordId) DO NOTHING", new Dictionary<string, object>
@@ -225,21 +223,5 @@ namespace RobloxUpdateBot.Services
 
             return verifiedRoles;
         }
-
-
-        public List<History> GetHistory(string client)
-        {
-            SqliteCommand command = SharedConnection.CreateCommand();
-            command.CommandText = "SELECT Version, Date FROM History WHERE Client = @client ORDER BY Date DESC";
-            command.Parameters.AddWithValue("@client", client);
-            using SqliteDataReader reader = command.ExecuteReader();
-            List<History> historyList = [];
-            while (reader.Read())
-            {
-                historyList.Add(new History(client, reader.GetString(0), DateTime.Parse(reader.GetString(1))));
-            }
-            return historyList;
-        }
-        
     }
 }

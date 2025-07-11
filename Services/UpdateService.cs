@@ -1,7 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -158,13 +157,19 @@ namespace RobloxUpdateBot.Services
 
         private async Task UpdateDetected(Status client, string oldVersion)
         {
-            IGuildChannel? channel = (await _discordService.Rest.GetGuildChannelsAsync(_guildId)).FirstOrDefault(x=> x.Id == client.ChannelId);
-            if (channel is null) return;
+            IGuildChannel? channel;
 
-            await channel.ModifyAsync(x => x.Name = _databaseService.GetChannel(channel.Id).ChannelUpdatedFalseText);
-            
+            if (client.ChannelId != 0)
+            {
+                channel = (await _discordService.Rest.GetGuildChannelsAsync(_guildId)).FirstOrDefault(x => x.Id == client.ChannelId);
+                if (channel is not null) await channel.ModifyAsync(x => x.Name = _databaseService.GetChannel(channel.Id).ChannelUpdatedFalseText);
+            }
+
             channel = (await _discordService.Rest.GetGuildChannelsAsync(_guildId)).FirstOrDefault(x => x.Id == _databaseService.GetLog());
             if (channel is null) return;
+
+            string versionActual = client.Version.Contains('|') ? client.Version[client.Version.IndexOf('|')..] : client.Version;
+            string oldVersionActual = oldVersion.Contains('|') ? oldVersion[oldVersion.IndexOf('|')..] : oldVersion;
 
             await _discordService.Rest.SendMessageAsync(channel.Id, new MessageProperties
             {
@@ -173,7 +178,7 @@ namespace RobloxUpdateBot.Services
                     new EmbedProperties
                     {
                         Title = $"{client.Client} Update Detected",
-                        Description = $"Version: ``{client.Version}``\nOld Version: ``{oldVersion}``",
+                        Description = $"Version: ``{versionActual}``\nOld Version: ``{oldVersionActual}``",
                         Color = new Color(255,0,0),
                         Footer = new EmbedFooterProperties
                         {
@@ -186,10 +191,4 @@ namespace RobloxUpdateBot.Services
         }
 
     }
-
-    public record RobloxVersion(
-        [property: JsonPropertyName("version")] string Version,
-        [property: JsonPropertyName("clientVersionUpload")] string ClientVersionUpload,
-        [property: JsonPropertyName("bootstrapperVersion")] string BootstrapperVersion
-    );
 }

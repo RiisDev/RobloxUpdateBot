@@ -1,8 +1,8 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using NetCord;
+﻿using NetCord;
 using NetCord.Rest;
 using NetCord.Services.ApplicationCommands;
 using RobloxUpdateBot.Services;
+using System.Diagnostics.CodeAnalysis;
 using Channel = RobloxUpdateBot.Services.Channel;
 
 namespace RobloxUpdateBot
@@ -38,6 +38,57 @@ namespace RobloxUpdateBot
             bool roleVerified = verifiedRoles.Intersect(roles).Any();
             bool userVerified = database.IsVerifiedUser(userId);
             return userVerified || roleVerified || userId == _ownerId;
+        }
+
+        [SlashCommand("watch", "Watched a client for updates, without updating a channel.")]
+        public async Task Watch(Client client)
+        {
+            await RespondAsync(InteractionCallback.DeferredMessage());
+            if (!IsUserVerified(Context.User.Id, (Context.User as GuildUser)!.RoleIds))
+            {
+                await FollowupAsync(new InteractionMessageProperties
+                {
+                    Content = "You do not have permission for this command"
+                });
+                return;
+            }
+
+            Status? status = database.GetStatus(InternalClients[client]);
+            if (status == null) database.UpdateStatus(new Status(InternalClients[client], "", 0, false));
+            else
+            {
+                Status newStatus = status with { ChannelId = 0 };
+                database.UpdateStatus(newStatus);
+            }
+
+            await FollowupAsync(new InteractionMessageProperties
+            {
+                Content = $"Successfully started watching **{client}**"
+            });
+        }
+
+        [SlashCommand("unwatch", "Unwatches a client for updates, without updating a channel.")]
+        public async Task UnWatch(Client client)
+        {
+            await RespondAsync(InteractionCallback.DeferredMessage());
+            if (!IsUserVerified(Context.User.Id, (Context.User as GuildUser)!.RoleIds))
+            {
+                await FollowupAsync(new InteractionMessageProperties
+                {
+                    Content = "You do not have permission for this command"
+                });
+                return;
+            }
+
+            Status? status = database.GetStatus(InternalClients[client]);
+            if (status == null) return;
+
+            database.DeleteStatus(client);
+
+            await FollowupAsync(new InteractionMessageProperties
+            {
+                Content = $"Successfully started watching **{client}**"
+            });
         }
 
         [SlashCommand("update-channel", "Updates bind between client and channel")]
@@ -219,10 +270,7 @@ namespace RobloxUpdateBot
                 return;
             }
 
-            await channel.ModifyAsync(options =>
-            {
-                options.Name = database.GetChannel(channel.Id)?.ChannelUpdatedTrueText;
-            });
+            await channel.ModifyAsync(options => options.Name = database.GetChannel(channel.Id).ChannelUpdatedTrueText);
 
 
             await FollowupAsync(new InteractionMessageProperties
@@ -270,10 +318,7 @@ namespace RobloxUpdateBot
                 return;
             }
 
-            await channel.ModifyAsync(options =>
-            {
-                options.Name = database.GetChannel(channel.Id)?.ChannelUpdatedFalseText;
-            });
+            await channel.ModifyAsync(options => options.Name = database.GetChannel(channel.Id).ChannelUpdatedFalseText);
 
             await FollowupAsync(new InteractionMessageProperties
             {
