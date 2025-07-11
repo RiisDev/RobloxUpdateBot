@@ -38,7 +38,16 @@ namespace RobloxUpdateBot.Services
             _ = RunAllWatchersAsync();
         }
 
-        private DateTime ParseDateTime(string input) => DateTime.ParseExact(input, ["dd MMM, yyyy", "d MMM, yyyy", "MMM d, yyyy", "MMM dd, yyyy"], CultureInfo.InvariantCulture, DateTimeStyles.None);
+        private DateTime ParseDateTime(string input) => DateTime.ParseExact(input, [
+            "dd MMM, yyyy",
+            "d MMM, yyyy",
+            "MMM d, yyyy",
+            "MMM dd, yyyy",
+            "dd MMM yyyy",
+            "d MMM yyyy",
+            "MMM d yyyy",
+            "MMM dd yyyy"
+            ], CultureInfo.InvariantCulture, DateTimeStyles.None);
 
         private async Task WindowsVersionWatcher()
         {
