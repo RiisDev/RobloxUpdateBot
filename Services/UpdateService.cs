@@ -41,6 +41,17 @@ namespace RobloxUpdateBot.Services
 
         private static DateTime ParseDateTime(string input) 
             => DateTime.ParseExact(input, [
+                "MM/dd/yyyy HH:mm:ss",
+
+                "dd MMM, yyyy HH:mm:ss",
+                "d MMM, yyyy HH:mm:ss",
+                "MMM d, yyyy HH:mm:ss",
+                "MMM dd, yyyy HH:mm:ss",
+                "dd MMM yyyy HH:mm:ss",
+                "d MMM yyyy HH:mm:ss",
+                "MMM d yyyy HH:mm:ss",
+                "MMM dd yyyy HH:mm:ss",
+
                 "dd MMM, yyyy",
                 "d MMM, yyyy",
                 "MMM d, yyyy",
