@@ -149,7 +149,7 @@ namespace RobloxUpdateBot.Services
 
         private async Task MobileVersionWatcher(string statusKey, string storeUrl, [StringSyntax(StringSyntaxAttribute.Regex)] string versionPattern, [StringSyntax(StringSyntaxAttribute.Regex)] string datePattern)
         {
-            Log($"Checking {statusKey} version from {storeUrl}...");
+            Log($"Checking {statusKey} version from {storeUrl}");
             Status? currentStatus = _databaseService.GetStatus(statusKey);
             if (currentStatus == null)
             {
