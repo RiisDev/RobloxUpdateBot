@@ -59,7 +59,7 @@ namespace RobloxUpdateBot.Services
 
         private static DateOnly ParseDateTime(string input)
         {
-            Log("Parsing Date Input");
+            Log($"Parsing Date Input: {input}");
 
             if (string.IsNullOrWhiteSpace(input))
             {
