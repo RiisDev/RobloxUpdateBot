@@ -16,7 +16,7 @@ foreach (string variable in env)
     string? value = Environment.GetEnvironmentVariable(variable);
     if (string.IsNullOrEmpty(value))
     {
-        Console.WriteLine($"Missing environment variable: {variable}");
+        Console.WriteLine($"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] [ENV_CHECK] Missing environment variable: {variable}");
         return;
     }
 }

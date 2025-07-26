@@ -1,17 +1,28 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Net.Http.Json;
-using System.Text.RegularExpressions;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using NetCord;
 using NetCord.Gateway;
 using NetCord.Rest;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 namespace RobloxUpdateBot.Services
 {
     public class UpdateService
     {
+        private static readonly Lock LogLock = new();
+
+        private static void Log(string message, [CallerMemberName] string caller = "")
+        {
+            lock (LogLock)
+            {
+                Console.WriteLine($"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] [{caller}] {message}");
+            }
+        }
+
         private readonly ulong _guildId = ulong.Parse(Environment.GetEnvironmentVariable("GUILD_ID") ?? "0");
         private readonly GatewayClient _discordService;
         private readonly DatabaseService _databaseService;
@@ -25,22 +36,38 @@ namespace RobloxUpdateBot.Services
         private readonly System.Timers.Timer _timer = new();
         public UpdateService(IHost host)
         {
+            Log($"Bound Guild: {_guildId}");
+
+            Log("Building services...");
             _discordService = host.Services.GetRequiredService<GatewayClient>();
             _databaseService = host.Services.GetRequiredService<DatabaseService>();
 
+            Log("Building HttpClient...");
             _client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0");
             _client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+
+            Log($"Building timer: {Environment.GetEnvironmentVariable("RECHECK_MS")}ms");
             _timer.Interval = int.Parse(Environment.GetEnvironmentVariable("RECHECK_MS") ?? "1800000");
             _timer.Elapsed += async (_, _) => await RunAllWatchersAsync();
             _timer.AutoReset = true;
             _timer.Enabled = true;
             _timer.Start();
-
+            
+            Log("Starting watchers...");
             _ = RunAllWatchersAsync();
         }
 
-        private static DateTime ParseDateTime(string input) 
-            => DateTime.ParseExact(input, [
+        private static DateOnly ParseDateTime(string input)
+        {
+            Log("Parsing Date Input");
+
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                Log("Input is null or empty, returning default DateOnly");
+                return DateOnly.MinValue;
+            }
+
+            string[] formats = [
                 "MM/dd/yyyy HH:mm:ss",
 
                 "dd MMM, yyyy HH:mm:ss",
@@ -52,6 +79,8 @@ namespace RobloxUpdateBot.Services
                 "MMM d yyyy HH:mm:ss",
                 "MMM dd yyyy HH:mm:ss",
 
+                "MM/dd/yyyy",
+
                 "dd MMM, yyyy",
                 "d MMM, yyyy",
                 "MMM d, yyyy",
@@ -60,22 +89,52 @@ namespace RobloxUpdateBot.Services
                 "d MMM yyyy",
                 "MMM d yyyy",
                 "MMM dd yyyy"
-            ], CultureInfo.InvariantCulture, DateTimeStyles.None);
+            ];
+
+            // Keep allowing for old datetime usage in-case using old database
+            if (DateTime.TryParseExact(input, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dateTime))
+            {
+                DateOnly dateOnly = DateOnly.FromDateTime(dateTime);
+                Log($"Parsed Date: {dateOnly}");
+                return dateOnly;
+            }
+
+            Log("Failed to parse input, returning default DateOnly");
+            return DateOnly.MinValue;
+        }
 
         private async Task DesktopVersionWatcher(string platform, string url)
         {
+            Log($"Checking {platform} version...");
             Status? currentStatus = _databaseService.GetStatus(platform);
-            if (currentStatus == null) return;
+            if (currentStatus == null)
+            {
+                Log($"No status found for {platform}, skipping watcher.");
+                return;
+            }
 
             string lastVersion = currentStatus.Version;
+            Log($"{platform} last version: {lastVersion}");
 
             HttpRequestMessage request = new(HttpMethod.Get, url);
             HttpResponseMessage response = await _client.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return;
+            if (!response.IsSuccessStatusCode)
+            {
+                Log($"Failed to fetch {platform} version from {url}. Status code: {response.StatusCode}");
+                return;
+            }
 
             RobloxVersion? robloxVersion = await response.Content.ReadFromJsonAsync<RobloxVersion>();
-            if (robloxVersion is null) return;
-            if (robloxVersion.ClientVersionUpload == currentStatus.Version) return;
+            if (robloxVersion is null)
+            {
+                Log($"Failed to deserialize RobloxVersion for {platform} from {url}.");
+                return;
+            }
+            if (robloxVersion.ClientVersionUpload == currentStatus.Version)
+            {
+                Log($"No update detected for {platform}. Current version: {robloxVersion.ClientVersionUpload}");
+                return;
+            }
 
             Status newStatus = currentStatus with
             {
@@ -83,34 +142,58 @@ namespace RobloxUpdateBot.Services
                 Updated = false
             };
 
+            Log($"Update detected for {platform}. New version: {robloxVersion.ClientVersionUpload}");
             _databaseService.UpdateStatus(newStatus);
             await UpdateDetected(newStatus, lastVersion);
         }
 
         private async Task MobileVersionWatcher(string statusKey, string storeUrl, [StringSyntax(StringSyntaxAttribute.Regex)] string versionPattern, [StringSyntax(StringSyntaxAttribute.Regex)] string datePattern)
         {
+            Log($"Checking {statusKey} version from {storeUrl}...");
             Status? currentStatus = _databaseService.GetStatus(statusKey);
-            if (currentStatus == null) return;
+            if (currentStatus == null)
+            {
+                Log($"No status found for {statusKey}, skipping watcher.");
+                return;
+            }
+
 
             int breakIndex = currentStatus.Version.IndexOf('|');
             string lastVersion = breakIndex <= 0 ? currentStatus.Version : currentStatus.Version[..breakIndex];
-            DateTime lastDate = breakIndex <= 0 ? DateTime.MinValue : ParseDateTime(currentStatus.Version[(breakIndex + 1)..]);
+            DateOnly lastDate = breakIndex <= 0 ? DateOnly.MinValue : ParseDateTime(currentStatus.Version[(breakIndex + 1)..]);
+            Log($"{statusKey} last version: {lastVersion}");
+            Log($"{statusKey} last update date: {lastDate}");
+
 
             HttpRequestMessage request = new(HttpMethod.Get, storeUrl);
             HttpResponseMessage response = await _client.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return;
+            if (!response.IsSuccessStatusCode)
+            {
+                Log($"Failed to fetch {statusKey} version from {storeUrl}. Status code: {response.StatusCode}");
+                return;
+            }
 
             string content = await response.Content.ReadAsStringAsync();
 
             Match versionMatch = Regex.Match(content, versionPattern);
             Match dateMatch = Regex.Match(content, datePattern);
 
-            if (!versionMatch.Success || !dateMatch.Success) return;
+            if (!versionMatch.Success || !dateMatch.Success)
+            {
+                Log($"Failed to find version or date in {statusKey} content from {storeUrl}. Version match: {versionMatch.Success} Date match: {dateMatch.Success}");
+                return;
+            }
 
             string currentUpdate = versionMatch.Groups[1].Value;
-            DateTime currentDate = ParseDateTime(dateMatch.Groups[1].Value);
+            DateOnly currentDate = ParseDateTime(dateMatch.Groups[1].Value);
+            Log($"{statusKey} current version: {currentUpdate}");
+            Log($"{statusKey} current update date: {currentDate}");
 
-            if (lastVersion == currentUpdate || lastDate >= currentDate) return;
+            if (lastVersion == currentUpdate || lastDate >= currentDate)
+            {
+                Log($"No update detected for {statusKey}. Current version: {currentUpdate}, Last version: {lastVersion}, Current date: {currentDate}, Last date: {lastDate}");
+                return;
+            }
 
             Status newStatus = currentStatus with
             {
@@ -118,6 +201,7 @@ namespace RobloxUpdateBot.Services
                 Updated = false
             };
 
+            Log($"Update detected for {statusKey}. New version: {currentUpdate}, New date: {currentDate}");
             _databaseService.UpdateStatus(newStatus);
             await UpdateDetected(newStatus, lastVersion);
         }
@@ -162,12 +246,13 @@ namespace RobloxUpdateBot.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in RunAllWatchersAsync: {ex.Message}");
+                Log($"Exception in RunAllWatchersAsync: {ex}");
             }
         }
 
         private async Task UpdateDetected(Status client, string oldVersion)
         {
+            Log($"Sending {client.Client} update message...");
             IGuildChannel? channel;
 
             if (client.ChannelId != 0)
